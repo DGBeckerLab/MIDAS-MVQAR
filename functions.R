@@ -61,7 +61,7 @@ almon_weight_gradient <- function(j, theta1, theta2, K, eps2 = 5e-3) {
 }
 
 #' Create parameter vector for use in simulation
-#' 
+#'
 #' Parameter set 1 is the set used in the thesis. Parameter set 2 is bigger values, especially for more recent observations. Parameter set 3 is bigger values for less recent observations. Parameter set 4 is a mix of negative and positive values, generated from a standard normal distribution.
 create_true_par_vector <- function(p, param_set = 1) {
   n_params_eq1 <- 1 + 3 * p + 9
