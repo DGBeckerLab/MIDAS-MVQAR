@@ -9,14 +9,16 @@ suppressPackageStartupMessages({
 
 source("functions.R")
 
-# Set these before sourcing, or the defaults below are used.
-if (!exists("param_set")) param_set <- 1
-if (!exists("theta_shrink")) theta_shrink <- 2e-3
-if (!exists("N")) N <- 250
-if (!exists("taus")) taus <- 0.5
-if (!exists("theta_bound")) theta_bound <- 5
-if (!exists("start_method")) start_method <- "neutral"
-stopifnot(length(taus) == 1, length(param_set) == 1, length(theta_shrink) == 1)
+# param_set, theta_shrink, and N must be set before sourcing (run_simstudy_all.R does this).
+# Other settings are fixed here so leftover globals cannot change a run silently.
+stopifnot(exists("param_set"), exists("theta_shrink"), exists("N"))
+stopifnot(length(param_set) == 1, length(theta_shrink) == 1)
+taus <- 0.5
+theta_bound <- 5
+start_method <- "neutral"
+kappa <- 0.01
+n_restarts <- 2
+ci_method <- "sandwich"
 force_rerun <- FALSE
 
 m <- 3
@@ -28,7 +30,10 @@ dir.create("results", showWarnings = FALSE)
 
 sim_file_name <- paste0(
   "results/sim-m", m, "-K", K, "-p", p, "-tau", taus,
-  "-param_set", param_set, "-lambda", sprintf("%g", theta_shrink), "-N", N, ".csv"
+  "-param_set", param_set, "-lambda", sprintf("%g", theta_shrink),
+  "-start", start_method, "-tb", theta_bound, "-kappa", kappa,
+  "-seed", seed, "-restarts", n_restarts, "-ci", ci_method,
+  "-N", N, ".csv"
 )
 message("Will save to file: ", sim_file_name)
 
@@ -48,7 +53,9 @@ summarise_cell <- function(res_df, true_par) {
     bias = bias,
     mc_se_bias = apply(est, 2, sd) / sqrt(n_ok),
     rmse = sqrt(colMeans((est - matrix(true_par, n_ok, length(true_par), byrow = TRUE))^2)),
-    coverage95 = colMeans(cov),
+    coverage95 = colMeans(cov, na.rm = TRUE),
+    n_ok = n_ok,
+    n_cov_na = colSums(is.na(cov)),
     row.names = NULL
   )
 }
@@ -73,17 +80,18 @@ if (file.exists(sim_file_name) && !force_rerun) {
         data = sim_data,
         K = K,
         p = p,
-        kappa = 0.01,
+        kappa = kappa,
         theta_shrink = theta_shrink,
         start_par = if (start_method == "ols") create_ols_start_par(sim_data, K, p) else start_par,
         theta_bound = theta_bound,
-        optimizer = "BFGS",
+        optimizer = "L-BFGS-B",
         use_bounds = FALSE,
-        n_restarts = 2,
+        n_restarts = n_restarts,
         jitter_sd = 0.01,
         verbose = FALSE,
         dry_run = FALSE,
-        use_analytic_grad = TRUE
+        use_analytic_grad = TRUE,
+        ci_method = ci_method
       ),
       error = function(e) e
     )
