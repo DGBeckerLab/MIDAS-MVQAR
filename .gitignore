@@ -3,3 +3,5 @@
 .Rproj.user
 
 *.png
+# Positron assistant stuff
+.posit
