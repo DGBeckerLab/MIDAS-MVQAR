@@ -12,10 +12,9 @@ suppressPackageStartupMessages({
 })
 
 # Almon polynomial weight function
-almon_weight_function <- function(j, theta1, theta2, K, eps2 = 5e-3) {
+almon_weight_function <- function(j, theta1, theta2, K) {
   s_j <- if (K > 0) (j / K) else j # s_j = j/K, j=0,1,..,K.
-  theta2_eff <- -pmax(eps2, -theta2) # theta2_eff = -max (epsilon_2, -theta2)
-  un_norm <- exp(theta1 * s_j + theta2_eff * s_j^2) # Quadratic exponential kernel (Almon polynomial) (unnormalized_weight = exp(theta1*s_j + theta2_eff*s_j^2))
+  un_norm <- exp(theta1 * s_j + theta2 * s_j^2) # Quadratic exponential kernel (Almon polynomial)
   u_norm <- pmax(un_norm, .Machine$double.eps) # unnormalized_weight = max(u,.Machine$double.eps)
   norm_weight <- un_norm / sum(un_norm) # normalized_weight = unnormalized_weight/sum(unnormalized_weight)
   norm_weight
@@ -32,17 +31,13 @@ check_mid_gaps <- function(x) {
 }
 
 # Derivative of Almon weights with respect to theta parameters
-almon_weight_gradient <- function(j, theta1, theta2, K, eps2 = 5e-3) {
+almon_weight_gradient <- function(j, theta1, theta2, K) {
   s_j <- if (K > 0) (j / K) else j
-  theta2_eff <- -pmax(eps2, -theta2)
 
   # Unnormalized weight and its derivatives
-  u_j <- exp(theta1 * s_j + theta2_eff * s_j^2)
+  u_j <- exp(theta1 * s_j + theta2 * s_j^2)
   du_dtheta1 <- u_j * s_j
-
-  # the theta2_eff transformation in derivative
-  dtheta2_eff_dtheta2 <- ifelse(-theta2 > eps2, 1, 0)
-  du_dtheta2 <- u_j * s_j^2 * dtheta2_eff_dtheta2
+  du_dtheta2 <- u_j * s_j^2
 
   # Sum for normalization
   U_sum <- sum(u_j)
@@ -73,9 +68,9 @@ create_true_par_vector <- function(p, param_set = 1) {
     eq1_alpha = c(0.3, 3, 3, -0.56)[param_set],
     if (p > 0) {
       c(
-        eq1_phi1 = c(0.6, 0.8, 0.005, -0.23)[param_set],
-        eq1_phi2 = c(0.08, 0.01, 0.01, 1.55)[param_set],
-        eq1_phi3 = c(-0.06, 0.005, 0.8, 0.07)[param_set]
+        eq1_phi1 = c(0.6, 0.8, 0.002, -0.085)[param_set],
+        eq1_phi2 = c(0.08, 0.01, 0.003, 0.576)[param_set],
+        eq1_phi3 = c(-0.06, 0.005, 0.242, 0.026)[param_set]
       )
     } else {
       numeric(0) # Cross-lags: [cpi_lag1, ir_lag1, nhpi_lag1] for p=1
@@ -101,9 +96,9 @@ create_true_par_vector <- function(p, param_set = 1) {
     eq2_phi_contemp = c(0.35, 1.35, 1.35, 0.11)[param_set],
     if (p > 0) {
       c(
-        eq2_phi1 = c(0.05, 0.50, 0.01, -0.56)[param_set],
-        eq2_phi2 = c(0.55, 0.05, 0.05, 1.79)[param_set],
-        eq2_phi3 = c(0.04, 0.01, 0.50, 0.50)[param_set]
+        eq2_phi1 = c(0.05, 0.50, 0.003, -0.208)[param_set],
+        eq2_phi2 = c(0.55, 0.05, 0.015, 0.665)[param_set],
+        eq2_phi3 = c(0.04, 0.01, 0.151, 0.186)[param_set]
       )
     } else {
       numeric(0) # Cross-lags: [cpi_lag1, ir_lag1, nhpi_lag1] for p=1
@@ -130,9 +125,9 @@ create_true_par_vector <- function(p, param_set = 1) {
     eq3_phi_contemp_ir = c(-0.22, 0.6, 0.6, 0.15)[param_set],
     if (p > 0) {
       c(
-        eq3_phi1 = c(0.06, 0.88, 0.01, -1.14)[param_set],
-        eq3_phi2 = c(-0.07, 0.10, 0.10, 1.25)[param_set],
-        eq3_phi3 = c(0.48, 0.01, 0.88, 0.43)[param_set]
+        eq3_phi1 = c(0.06, 0.88, 0.003, -0.423)[param_set],
+        eq3_phi2 = c(-0.07, 0.10, 0.030, 0.464)[param_set],
+        eq3_phi3 = c(0.48, 0.01, 0.266, 0.160)[param_set]
       )
     } else {
       numeric(0) # Cross-lags: [cpi_lag1, ir_lag1, nhpi_lag1] for p=1
@@ -155,6 +150,12 @@ create_true_par_vector <- function(p, param_set = 1) {
   true_par <- c(par_eq1, par_eq2, par_eq3)
   stopifnot(length(true_par) == (n_params_eq1 + n_params_eq2 + n_params_eq3))
   true_par
+}
+
+# Neutral starting values: zero intercepts, AR and MIDAS coefficients, and Almon thetas (uniform weights)
+create_neutral_par_vector <- function(p) {
+  n_total <- (1 + 3 * p + 9) + (2 + 3 * p + 9) + (3 + 3 * p + 9)
+  numeric(n_total)
 }
 
 # Simulate data using the true parameter vector (to verify DGP)
@@ -368,9 +369,9 @@ create_lag_matrix <- function(x, p, var_name) {
 }
 
 
-simulate <- function(m = 3, K = 4, p = 1, taus = c(0.25, 0.50, 0.75, 0.90)) {
+simulate <- function(m = 3, K = 4, p = 1, taus = c(0.25, 0.50, 0.75, 0.90), param_set = 1) {
   # Simulate data for three response variables (CPI, IR, NHPI) and three predictors (GSCPI, IPPI, epi)
-  start_date <- as.Date("1998-01-01")
+  start_date <- as.Date("1990-01-01")
   end_date <- as.Date("2025-02-01")
 
   dates_lf <- seq(start_date, end_date, by = "quarter")
@@ -394,7 +395,7 @@ simulate <- function(m = 3, K = 4, p = 1, taus = c(0.25, 0.50, 0.75, 0.90)) {
   epi_blocks <- standardize_block(epi_blocks)
 
   # Create true parameter vector
-  true_par <- create_true_par_vector(p)
+  true_par <- create_true_par_vector(p, param_set = param_set)
 
   # Simulate data using the true parameter vector
   simulated_data <- simulate_data_from_par(
@@ -405,9 +406,9 @@ simulate <- function(m = 3, K = 4, p = 1, taus = c(0.25, 0.50, 0.75, 0.90)) {
     p,
     dates_lf,
     dates_hf,
-    gscpi_blocks,
-    ippi_blocks,
-    epi_blocks
+    gscpi_hf,
+    ippi_hf,
+    epi_hf
   )
 
   # Create time series objects with the exact dates
@@ -1102,6 +1103,140 @@ calc_ci_from_optim <- function(opt, p, level = 0.95) {
   )
 }
 
+# Per-equation Jacobians of the fitted values with respect to each equation's own
+# parameter block (same column order as the parameter vector). Requires p >= 1.
+joint_obs_jacobian <- function(par, data, K, p) {
+  n_params_eq1 <- 1 + 3 * p + 9
+  n_params_eq2 <- 2 + 3 * p + 9
+  par_eq1 <- par[1:n_params_eq1]
+  par_eq2 <- par[(n_params_eq1 + 1):(n_params_eq1 + n_params_eq2)]
+  par_eq3 <- par[(n_params_eq1 + n_params_eq2 + 1):length(par)]
+
+  j <- 0:K
+  Xs <- list(
+    as.matrix(data[, paste0("gscpi_lag", 0:K)]),
+    as.matrix(data[, paste0("ippi_lag", 0:K)]),
+    as.matrix(data[, paste0("epi_lag", 0:K)])
+  )
+  lags <- as.matrix(data[, c(
+    paste0("cpi_lag", 1:p),
+    paste0("ir_lag", 1:p),
+    paste0("nhpi_lag", 1:p)
+  )])
+
+  # MIDAS regressors and their theta derivatives, for theta order (g1, g2, i1, i2, e1, e2)
+  midas_part <- function(theta_block, scales) {
+    M <- matrix(0, nrow(data), 3)
+    dcols <- matrix(0, nrow(data), 6)
+    for (k in 1:3) {
+      th1 <- theta_block[2 * k - 1]
+      th2 <- theta_block[2 * k]
+      w <- almon_weight_function(j, th1, th2, K)
+      g <- almon_weight_gradient(j, th1, th2, K)
+      M[, k] <- Xs[[k]] %*% w
+      dcols[, 2 * k - 1] <- scales[k] * (Xs[[k]] %*% g$grad_theta1)
+      dcols[, 2 * k] <- scales[k] * (Xs[[k]] %*% g$grad_theta2)
+    }
+    list(M = M, dcols = dcols)
+  }
+
+  block_jac <- function(Z, par_e, n_lead) {
+    scales <- par_e[(n_lead + 3 * p + 1):(n_lead + 3 * p + 3)]
+    thetas <- par_e[(n_lead + 3 * p + 4):(n_lead + 3 * p + 9)]
+    mp <- midas_part(thetas, scales)
+    cbind(Z, mp$M, mp$dcols)
+  }
+
+  J1 <- block_jac(cbind(1, lags), par_eq1, 1)
+  J2 <- block_jac(cbind(1, data$cpi, lags), par_eq2, 2)
+  J3 <- block_jac(cbind(1, data$cpi, data$ir, lags), par_eq3, 3)
+  list(J1 = J1, J2 = J2, J3 = J3)
+}
+
+# Powell-kernel bandwidth for the density at zero (Hall and Sheather, 1988)
+hs_bandwidth <- function(n, tau, alpha = 0.05) {
+  q <- qnorm(tau)
+  n^(-1 / 3) * qnorm(1 - alpha / 2)^(2 / 3) * ((1.5 * dnorm(q)^2) / (2 * q^2 + 1))^(1 / 3)
+}
+
+# Sandwich covariance H^-1 M H^-1 for one equation block.
+# H: Powell-kernel estimate of the Hessian (plus penalty curvature 2*lambda on thetas).
+# M: sum of squared pinball scores times J J'.
+# density = "spacing": scalar density at zero from residual quantile spacing (as in quantreg nid)
+# density = "powell": observation-level Powell kernel
+sandwich_cov <- function(J, u, tau, h, pen_diag = NULL, density = c("spacing", "powell")) {
+  density <- match.arg(density)
+  psi <- tau - as.numeric(u < 0)
+  if (density == "powell") {
+    ind <- as.numeric(abs(u) <= h)
+    H <- crossprod(J, J * (ind / (2 * h)))
+  } else {
+    qs <- quantile(u, c(tau - h, tau + h), names = FALSE)
+    f0 <- 2 * h / (qs[2] - qs[1])
+    H <- f0 * crossprod(J)
+  }
+  if (!is.null(pen_diag)) H <- H + diag(pen_diag, nrow = ncol(J))
+  M <- crossprod(J, J * psi^2)
+  Hinv <- solve(H)
+  Hinv %*% M %*% Hinv
+}
+
+# Sandwich-based CI table with the same layout as calc_ci_from_optim().
+# Returns NULL if the covariance cannot be computed.
+calc_ci_sandwich <- function(par, data, K, p, tau, theta_shrink, level = 0.95) {
+  n <- nrow(data)
+  h <- hs_bandwidth(n, tau, alpha = 1 - level)
+  fit <- calculate_fitted_values(par, data, p, K)
+  Jl <- joint_obs_jacobian(par, data, K, p)
+  u <- list(
+    data$cpi - fit$cpi_fitted,
+    data$ir - fit$ir_fitted,
+    data$nhpi - fit$nhpi_fitted
+  )
+  V <- matrix(0, length(par), length(par))
+  q_sizes <- vapply(Jl, ncol, integer(1))
+  blocks <- split(seq_along(par), rep(1:3, q_sizes))
+  for (e in 1:3) {
+    J <- Jl[[e]]
+    q <- ncol(J)
+    pen <- rep(0, q)
+    pen[(q - 5):q] <- 2 * theta_shrink
+    Ve <- tryCatch(sandwich_cov(J, u[[e]], tau, h, pen), error = function(err) NULL)
+    if (is.null(Ve) || !all(is.finite(Ve))) {
+      warning("Sandwich covariance not computable for equation ", e)
+      return(NULL)
+    }
+    V[blocks[[e]], blocks[[e]]] <- Ve
+  }
+  # Pass V through calc_ci_from_optim, which inverts the matrix it is given
+  calc_ci_from_optim(list(par = par, hessian = solve(V)), p, level = level)
+}
+
+# OLS starting values: each equation is regressed on its lags and contemporaneous
+# terms, with each MIDAS predictor at uniform Almon weights (the lag mean). Thetas start at 0.
+create_ols_start_par <- function(data, K, p) {
+  mean_lags <- function(prefix) rowMeans(as.matrix(data[, paste0(prefix, "_lag", 0:K)]))
+  xg <- mean_lags("gscpi")
+  xi <- mean_lags("ippi")
+  xe <- mean_lags("epi")
+  lag_all <- if (p > 0) {
+    cbind(
+      as.matrix(data[, paste0("cpi_lag", 1:p)]),
+      as.matrix(data[, paste0("ir_lag", 1:p)]),
+      as.matrix(data[, paste0("nhpi_lag", 1:p)])
+    )
+  } else {
+    NULL
+  }
+  Z1 <- cbind(1, lag_all, xg, xi, xe)
+  Z2 <- cbind(1, data$cpi, lag_all, xg, xi, xe)
+  Z3 <- cbind(1, data$cpi, data$ir, lag_all, xg, xi, xe)
+  b1 <- unname(lm.fit(Z1, data$cpi)$coefficients)
+  b2 <- unname(lm.fit(Z2, data$ir)$coefficients)
+  b3 <- unname(lm.fit(Z3, data$nhpi)$coefficients)
+  c(b1, rep(0, 6), b2, rep(0, 6), b3, rep(0, 6))
+}
+
 ## Estimator function with analytic gradients - FIXED
 estimate_joint_qarmidas <- function(
   taus,
@@ -1119,8 +1254,11 @@ estimate_joint_qarmidas <- function(
   verbose = TRUE,
   dry_run = FALSE,
   use_analytic_grad = TRUE, # New option for analytic gradients
-  ci_level = 0.95 # Confidence level added
+  ci_level = 0.95, # Confidence level added
+  theta_bound = NULL, # If set, box-constrain Almon thetas to [-theta_bound, theta_bound]
+  ci_method = c("sandwich", "hessian")
 ) {
+  ci_method <- match.arg(ci_method)
   optimizer <- match.arg(optimizer)
   n_params_eq1 <- 1 + 3 * p + 9
   n_params_eq2 <- 2 + 3 * p + 9
@@ -1131,6 +1269,11 @@ estimate_joint_qarmidas <- function(
     start_par <- create_true_par_vector(p)
   }
   stopifnot(length(start_par) == par)
+  theta_idx <- c(
+    (1 + 3 * p + 4):(1 + 3 * p + 9),
+    (n_params_eq1 + 2 + 3 * p + 4):(n_params_eq1 + 2 + 3 * p + 9),
+    (n_params_eq1 + n_params_eq2 + 3 + 3 * p + 4):(n_params_eq1 + n_params_eq2 + 3 + 3 * p + 9)
+  )
 
   result <- list()
   current_par <- start_par
@@ -1187,18 +1330,37 @@ estimate_joint_qarmidas <- function(
 
         # Define objective function
         fn_obj <- function(par) {
-          joint_loss_matrix_smooth(
-            par = par,
-            data = data,
-            tau = tau,
-            K = K,
-            p = p,
-            kappa = kappa_tau,
-            theta_shrink = theta_shrink
+          v <- tryCatch(
+            joint_loss_matrix_smooth(
+              par = par,
+              data = data,
+              tau = tau,
+              K = K,
+              p = p,
+              kappa = kappa_tau,
+              theta_shrink = theta_shrink
+            ),
+            error = function(e) NA_real_
           )
+          if (is.finite(v)) v else Inf
         }
 
-        if (use_bounds || optimizer == "L-BFGS-B") {
+        if (!is.null(theta_bound)) {
+          lo <- rep(-Inf, par)
+          up <- rep(Inf, par)
+          lo[theta_idx] <- -theta_bound
+          up[theta_idx] <- theta_bound
+          opt <- stats::optim(
+            par = st,
+            fn = fn_obj,
+            gr = gr_func,
+            method = "L-BFGS-B",
+            lower = lo,
+            upper = up,
+            control = ctrl,
+            hessian = TRUE
+          )
+        } else if (use_bounds || optimizer == "L-BFGS-B") {
           lo <- rep(-bounds_range, par)
           up <- rep(bounds_range, par)
           opt <- stats::optim(
@@ -1224,9 +1386,11 @@ estimate_joint_qarmidas <- function(
         if (is.null(best) || opt$value < best$value) best <- opt
       }
 
-      # Compute CI table for this tau if Hessian is available
+      # Compute CI table for this tau
       ci_tab <- NULL
-      if (!is.null(best$hessian)) {
+      if (ci_method == "sandwich") {
+        ci_tab <- calc_ci_sandwich(best$par, data, K, p, tau, theta_shrink, level = ci_level)
+      } else if (!is.null(best$hessian)) {
         ci_tab <- calc_ci_from_optim(best, p, level = ci_level)
       }
     }
