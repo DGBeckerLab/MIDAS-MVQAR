@@ -216,7 +216,7 @@ simulate_data_from_par <- function(
         if (hf_index_start < 1) {
           return(rep(NA, K + 1))
         }
-        hf_series[hf_index_start:hf_index_end]
+        rev(hf_series[hf_index_start:hf_index_end])
       },
       numeric(K + 1)
     ))
@@ -339,7 +339,7 @@ create_midas_blocks <- function(hf_series, n, m, K, prefix) {
       if (hf_index_start < 1) {
         return(rep(NA, K + 1))
       }
-      hf_series[hf_index_start:hf_index_end]
+      rev(hf_series[hf_index_start:hf_index_end])
     },
     numeric(K + 1)
   ))
@@ -1309,7 +1309,7 @@ estimate_joint_qarmidas <- function(
       )
       best <- NULL
       for (st in starts) {
-        ctrl <- list(maxit = 4000, reltol = 1e-8)
+        ctrl <- list(maxit = 10000, reltol = 1e-8)
 
         # Use analytic gradients if requested
         if (use_analytic_grad) {
@@ -1346,6 +1346,9 @@ estimate_joint_qarmidas <- function(
         }
 
         if (!is.null(theta_bound)) {
+          if (optimizer == "BFGS") {
+            warning("theta_bound is set: using L-BFGS-B with theta bounds instead of BFGS.")
+          }
           lo <- rep(-Inf, par)
           up <- rep(Inf, par)
           lo[theta_idx] <- -theta_bound
@@ -1357,7 +1360,7 @@ estimate_joint_qarmidas <- function(
             method = "L-BFGS-B",
             lower = lo,
             upper = up,
-            control = ctrl,
+            control = list(maxit = ctrl$maxit, factr = 1e7), # L-BFGS-B ignores reltol
             hessian = TRUE
           )
         } else if (use_bounds || optimizer == "L-BFGS-B") {
@@ -1469,7 +1472,7 @@ summary.mvqarmidas_fit <- function(object, ...) {
     res_k <- object[[key]]
     ci_tab <- res_k$ci_table
     if (is.null(ci_tab)) {
-      out[[i]] <- NULL
+      out[i] <- list(NULL)
       next
     }
 
