@@ -1,0 +1,5 @@
+if(!require("xts")) install.packages("xts")
+if(!require("zoo")) install.packages("zoo")
+if(!require("quantreg")) install.packages("quantreg")
+if(!require("midasr")) install.packages("midasr")
+if(!require("ggridges")) install.packages("ggridges")
