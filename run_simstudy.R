@@ -18,7 +18,7 @@ theta_bound <- 5
 start_method <- "neutral"
 kappa <- 0.01
 n_restarts <- 2
-ci_method <- "sandwich"
+ci_method <- "hessian"
 force_rerun <- FALSE
 
 m <- 3
