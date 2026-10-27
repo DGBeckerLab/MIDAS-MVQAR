@@ -1,4 +1,4 @@
-# MVQAR-MIDAS (Devan's Code for Patrick)
+# MultiVariate Quantile Autoregression-Mixed Data Sampling (MVQAR-MIDAS) Modeling
 
 - `run_interactive.R` allows for simulating and plotting a single data set.
 - `run_simstudy.R` will run 1000 simulations and compare the estimates with the true value.
